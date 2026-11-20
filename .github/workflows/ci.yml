@@ -491,14 +491,12 @@ jobs:
       - name: Dependencies
         run: |
           ${{github.workspace}}/Submodules/PelePhysics/Submodules/amrex/.github/workflows/dependencies/ubuntu_free_disk_space.sh
+          # Also puts the toolkit on PATH and LD_LIBRARY_PATH for later steps.
           ${{github.workspace}}/Submodules/PelePhysics/.github/workflows/dependencies/dependencies_cuda.sh
       - *install_ccache
       - *restore_ccache
       - name: Configure
         run: |
-          # /usr/local/cuda points at whichever version dependencies_cuda.sh installed.
-          export PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
-          export LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
           cmake -Bbuild-cuda \
             -DCMAKE_BUILD_TYPE:STRING=Release \
             -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
@@ -536,6 +534,9 @@ jobs:
       - name: Dependencies
         run: |
           ${{github.workspace}}/Submodules/PelePhysics/Submodules/amrex/.github/workflows/dependencies/ubuntu_free_disk_space.sh
+          # ROCm 6.3.3 inline: PelePhysics' dependencies_hip.sh still installs
+          # 6.2.1. Switch to it (which also exports the toolchain, so the
+          # `source /etc/profile.d/rocm.sh` lines go) once it moves to 6.3.3.
           sudo mkdir --parents --mode=0755 /etc/apt/keyrings
           wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
           echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/6.3.3 noble main" | sudo tee --append /etc/apt/sources.list.d/rocm.list
@@ -595,17 +596,13 @@ jobs:
       - name: Dependencies
         run: |
           ${{github.workspace}}/Submodules/PelePhysics/Submodules/amrex/.github/workflows/dependencies/ubuntu_free_disk_space.sh
-          sudo wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
-          sudo apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
-          echo "deb https://apt.repos.intel.com/oneapi all main" | sudo tee /etc/apt/sources.list.d/oneAPI.list
-          sudo apt-get update
-          sudo apt-get install -y intel-oneapi-compiler-dpcpp-cpp intel-oneapi-mkl-devel
+          # Also sets BASH_ENV, so every later step starts with setvars.sh
+          # sourced (icpx/icx on PATH).
+          ${{github.workspace}}/Submodules/PelePhysics/.github/workflows/dependencies/dependencies_dpcpp.sh
       - *install_ccache
       - *restore_ccache
       - name: Configure
         run: |
-          # setvars.sh returns nonzero under errexit; || suspends errexit.
-          source /opt/intel/oneapi/setvars.sh || true
           cmake -B${{runner.workspace}}/build-sycl \
             -DCMAKE_BUILD_TYPE:STRING=Release \
             -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
@@ -622,8 +619,6 @@ jobs:
             ${{github.workspace}}
       - name: Build
         run: |
-          # setvars.sh returns nonzero under errexit; || suspends errexit.
-          source /opt/intel/oneapi/setvars.sh || true
           ccache -z
           cmake --build ${{runner.workspace}}/build-sycl --parallel ${{env.NPROCS}}
           ccache -s
