@@ -285,6 +285,10 @@ jobs:
       COMPILER_CACHE_DIR: ${{matrix.ccache_cache}}
       CACHE_KEY: ccache-${{github.workflow}}-${{github.job}}-${{matrix.os}}-${{matrix.dim}}-${{matrix.build_type}}
       CTEST_ARGS: ${{matrix.ctest_args}}
+      # MetaPhysicL and MASA commits for the MASA build (upstream HEADs on
+      # 2026-11-20); bump them here to update.
+      METAPHYSICL_COMMIT: cd1e57da8d7ede6121fa381d59ab47fa9b153d7f
+      MASA_COMMIT: 9c31838b49501d7925b60006b59b8a39c3ea4a73
     steps:
       - name: Clone
         uses: actions/checkout@v6
@@ -314,22 +318,38 @@ jobs:
         run: pip install pynose numpy pandas setuptools
       - *install_ccache
       - *restore_ccache
+      # MetaPhysicL and MASA at fixed commits (neither upstream HEAD is a
+      # tagged release), so an upstream change cannot break this job and the
+      # install can be cached: it is rebuilt only when a commit below changes.
+      - name: Cache MASA
+        id: cache-masa
+        uses: actions/cache@v5
+        with:
+          path: ${{runner.workspace}}/deps/install
+          key: masa-${{runner.os}}-${{runner.arch}}-${{env.METAPHYSICL_COMMIT}}-${{env.MASA_COMMIT}}
       - name: MASA
+        if: steps.cache-masa.outputs.cache-hit != 'true'
         run: |
           DEPS=${{runner.workspace}}/deps
-          mkdir -p ${DEPS}
+          # Shallow checkout of one commit, with its submodules. The origin
+          # remote is needed: MetaPhysicL's submodule URL is relative to it.
+          fetch_commit() {
+            git init -q "$1"
+            git -C "$1" remote add origin "$2"
+            git -C "$1" fetch -q --depth 1 origin "$3"
+            git -C "$1" checkout -q FETCH_HEAD
+            git -C "$1" submodule update -q --init --recursive --depth 1
+          }
           # Install MetaPhysicL
-          cd ${DEPS}
-          git clone --recursive https://github.com/roystgnr/MetaPhysicL.git
-          cd MetaPhysicL
+          fetch_commit ${DEPS}/MetaPhysicL https://github.com/roystgnr/MetaPhysicL.git ${METAPHYSICL_COMMIT}
+          cd ${DEPS}/MetaPhysicL
           ./bootstrap
           ./configure --prefix="${DEPS}/install/MetaPhysicL"
           make -j ${{env.NPROCS}}
           make install
           # Install MASA
-          cd ${DEPS}
-          git clone --recursive https://github.com/manufactured-solutions/MASA.git
-          cd MASA
+          fetch_commit ${DEPS}/MASA https://github.com/manufactured-solutions/MASA.git ${MASA_COMMIT}
+          cd ${DEPS}/MASA
           ./bootstrap
           ./configure CXX='mpicxx -std=c++11' CC=mpicc \
             METAPHYSICL_DIR="${DEPS}/install/MetaPhysicL" \
