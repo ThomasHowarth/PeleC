@@ -260,12 +260,12 @@ jobs:
         dim: [2, 3]
         include:
           - os: macos-latest
-            install_deps: brew install open-mpi libtool automake ccache
+            install_deps: brew install open-mpi ccache
             procs: $(sysctl -n hw.ncpu)
             ccache_cache: /Users/runner/Library/Caches/ccache
             reference_comparison: ON
           - os: ubuntu-24.04
-            install_deps: sudo apt-get update && sudo apt-get install -y libopenmpi-dev openmpi-bin libtool-bin
+            install_deps: sudo apt-get update && sudo apt-get install -y libopenmpi-dev openmpi-bin
             procs: $(nproc)
             ccache_cache: ~/.cache/ccache
             reference_comparison: OFF
@@ -286,7 +286,9 @@ jobs:
       CACHE_KEY: ccache-${{github.workflow}}-${{github.job}}-${{matrix.os}}-${{matrix.dim}}-${{matrix.build_type}}
       CTEST_ARGS: ${{matrix.ctest_args}}
       # MetaPhysicL and MASA commits for the MASA build (upstream HEADs on
-      # 2026-11-20); bump them here to update.
+      # 2026-11-20; neither is a tagged release), fixed so an upstream change
+      # cannot break this job and the install can be cached. Bump them here
+      # to update.
       METAPHYSICL_COMMIT: cd1e57da8d7ede6121fa381d59ab47fa9b153d7f
       MASA_COMMIT: 9c31838b49501d7925b60006b59b8a39c3ea4a73
     steps:
@@ -318,9 +320,7 @@ jobs:
         run: pip install pynose numpy pandas setuptools
       - *install_ccache
       - *restore_ccache
-      # MetaPhysicL and MASA at fixed commits (neither upstream HEAD is a
-      # tagged release), so an upstream change cannot break this job and the
-      # install can be cached: it is rebuilt only when a commit below changes.
+      # Rebuilt only when METAPHYSICL_COMMIT or MASA_COMMIT changes.
       - name: Cache MASA
         id: cache-masa
         uses: actions/cache@v5
@@ -329,7 +329,16 @@ jobs:
           key: masa-${{runner.os}}-${{runner.arch}}-${{env.METAPHYSICL_COMMIT}}-${{env.MASA_COMMIT}}
       - name: MASA
         if: steps.cache-masa.outputs.cache-hit != 'true'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
+          # Autotools for ./bootstrap, only needed on a cache miss.
+          if [ "${RUNNER_OS}" = macOS ]; then
+            brew install libtool automake
+          else
+            sudo apt-get install -y libtool-bin
+          fi
           DEPS=${{runner.workspace}}/deps
           # Shallow checkout of one commit, with its submodules. The origin
           # remote is needed: MetaPhysicL's submodule URL is relative to it.
