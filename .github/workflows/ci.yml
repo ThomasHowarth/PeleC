@@ -42,9 +42,19 @@ env:
   COMPILER_CACHE_DIR: ~/.cache/ccache
 
 jobs:
+  Detect-Changes:
+    # A called workflow can only narrow the caller's token permissions, so
+    # grant here what its filter job needs.
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/detect-changes.yml
+
   Formatting:
+    needs: Detect-Changes
     # Also on the scheduled runs (it takes seconds), so the build jobs that
     # need it run there to refresh their caches.
+    if: needs['Detect-Changes'].outputs['has-source-changes'] == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Clone
@@ -57,7 +67,8 @@ jobs:
         extensions: 'H,h,cpp'
         clangFormatVersion: 20
   CPU-GNUmake:
-    needs: Formatting
+    needs: [Detect-Changes, Formatting]
+    if: needs['Detect-Changes'].outputs['has-source-changes'] == 'true'
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: 500M
@@ -250,7 +261,8 @@ jobs:
           path: ${{env.COMPILER_CACHE_DIR}}
           key: ${{steps.ccache.outputs.cache-primary-key}}
   CPU-CMake:
-    needs: Formatting
+    needs: [Detect-Changes, Formatting]
+    if: needs['Detect-Changes'].outputs['has-source-changes'] == 'true'
     runs-on: ${{matrix.os}}
     strategy:
       fail-fast: false
@@ -422,7 +434,8 @@ jobs:
       - *save_ccache
 
   CPU-CMake-SINGLE:
-    needs: Formatting
+    needs: [Detect-Changes, Formatting]
+    if: needs['Detect-Changes'].outputs['has-source-changes'] == 'true'
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: 250M
@@ -475,7 +488,8 @@ jobs:
 
   GPU-Nvidia:
     name: GPU-CUDA
-    needs: [Formatting, CPU-GNUmake]
+    needs: [Detect-Changes, Formatting, CPU-GNUmake]
+    if: needs['Detect-Changes'].outputs['has-source-changes'] == 'true'
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: 300M
@@ -520,7 +534,8 @@ jobs:
       - *save_ccache
   GPU-AMD:
     name: GPU-HIP
-    needs: [Formatting, CPU-GNUmake]
+    needs: [Detect-Changes, Formatting, CPU-GNUmake]
+    if: needs['Detect-Changes'].outputs['has-source-changes'] == 'true'
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: 250M
@@ -578,7 +593,8 @@ jobs:
       - *save_ccache
   GPU-Intel:
     name: GPU-SYCL
-    needs: [Formatting, CPU-GNUmake]
+    needs: [Detect-Changes, Formatting, CPU-GNUmake]
+    if: needs['Detect-Changes'].outputs['has-source-changes'] == 'true'
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: 200M
@@ -630,7 +646,8 @@ jobs:
       - *trim_ccache
       - *save_ccache
   Lint-clang-tidy:
-    needs: Formatting
+    needs: [Detect-Changes, Formatting]
+    if: needs['Detect-Changes'].outputs['has-source-changes'] == 'true'
     runs-on: ubuntu-24.04
     env:
       CCACHE_MAXSIZE: 100M
@@ -739,9 +756,8 @@ jobs:
         working-directory: ${{runner.workspace}}/build-clang-tidy
         run: ${{github.workspace}}/.github/scripts/count_warnings.sh clang-tidy-full-report.txt
   Lint-codeql:
-    needs: Formatting
-    # No cache to refresh: skipped on the scheduled runs.
-    if: github.event_name != 'schedule'
+    needs: [Detect-Changes, Formatting]
+    if: needs['Detect-Changes'].outputs['run-checks'] == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Clone
@@ -788,8 +804,8 @@ jobs:
         with:
           sarif_file: sarif-results/cpp.sarif
   Lint-codespell:
-    needs: Formatting
-    # No cache to refresh: skipped on the scheduled runs.
+    # Not filtered: docs-only changes are what it checks. No cache to
+    # refresh, so skipped on the scheduled runs.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
@@ -805,3 +821,24 @@ jobs:
           pip install codespell
       - name: Run codespell
         run: codespell
+
+  # The one check for branch protection to require. A job skipped by its own
+  # `if:` (docs-only changes) does not expand its matrix, so the per-entry
+  # checks such as "CPU-CMake (ubuntu-24.04, ...)" never report and a PR
+  # requiring them waits forever; skipped jobs pass here. It also fails when
+  # Detect-Changes fails, which would otherwise skip every build.
+  # CPU-CMake-SINGLE is left out, as it is not a required check.
+  CI-Status:
+    needs: [Detect-Changes, Formatting, CPU-GNUmake, CPU-CMake, GPU-Nvidia,
+            GPU-AMD, GPU-Intel, Lint-clang-tidy, Lint-codeql, Lint-codespell]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "${RESULTS}"
+          for r in ${RESULTS}; do
+            [ "$r" = success ] || [ "$r" = skipped ] || exit 1
+          done
