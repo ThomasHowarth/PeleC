@@ -202,7 +202,13 @@ trace_ppm(
     // in the trans routines AND 2) add the tracing in the pc_plm_x,
     // pc_plm_y, pc_plm_z routines.
 
-    for (int n = QFS; n < NUM_SPECIES + QFS; n++) {
+    // All the passively advected variables: advected scalars, species and
+    // the linear (soot) variables. The auxiliary variables are not advected.
+    for (int n = QFA; n < QLIN + NUM_LIN; n++) {
+      if ((n >= QFX) && (n < QLIN)) {
+        continue;
+      }
+
       // Plus state on face i
       if (
         (idir == 0 && i >= vlo[0]) || (idir == 1 && j >= vlo[1]) ||
