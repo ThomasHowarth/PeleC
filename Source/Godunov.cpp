@@ -54,6 +54,68 @@ pc_low_order_boundary(
   });
 }
 
+// EB version of pc_low_order_boundary. Covered cells hold a zeroed primitive
+// state, so they are skipped, the slopes are the EB ones, and the flux is
+// only recomputed on faces that are not covered.
+void
+pc_low_order_boundary_eb(
+  amrex::Box const& bfbx,
+  const int bclo,
+  const int bchi,
+  const int domlo,
+  const int domhi,
+  const int plm_iorder,
+  const bool use_flattening,
+  const int idir,
+  const amrex::Real dx,
+  const amrex::Real dt,
+  amrex::Array4<const amrex::Real> const& q,
+  amrex::Array4<const amrex::Real> const& qa,
+  amrex::Array4<amrex::EBCellFlag const> const& flag_arr,
+  amrex::Array4<const amrex::Real> const& area,
+  amrex::Array4<amrex::Real> const& flx,
+  amrex::Array4<amrex::Real> const& qdir)
+{
+  // Compute left and right states
+  amrex::Box bdbx = enclosedCells(bfbx).grow(idir, 1);
+  amrex::Box bdbx2 = growHi(bdbx, idir, 1);
+  amrex::FArrayBox qbm(bdbx2, QVAR, amrex::The_Async_Arena());
+  amrex::FArrayBox qbp(bdbx, QVAR, amrex::The_Async_Arena());
+  auto const& qbmarr = qbm.array();
+  auto const& qbparr = qbp.array();
+  amrex::ParallelFor(bdbx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+    if (flag_arr(i, j, k).isCovered()) {
+      return;
+    }
+
+    amrex::Real slope[QVAR];
+
+    amrex::Real flat = 1.0;
+    // Calculate flattening in-place
+    if (use_flattening) {
+      for (int dir_flat = 0; dir_flat < AMREX_SPACEDIM; dir_flat++) {
+        flat = amrex::min<amrex::Real>(
+          flat, flatten_eb(i, j, k, dir_flat, flag_arr, q));
+      }
+    }
+
+    for (int n = 0; n < QVAR; ++n) {
+      slope[n] = plm_slope_eb(
+        AMREX_D_DECL(i, j, k), n, idir, flag_arr, q, flat, plm_iorder);
+    }
+    pc_plm_d_eb(
+      i, j, k, idir, qbmarr, qbparr, slope, q, qa(i, j, k, QC), dx, dt, area);
+  });
+
+  // Recompute fluxes
+  amrex::ParallelFor(bfbx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
+    if (area(i, j, k) > 0.) {
+      pc_cmpflx(
+        i, j, k, bclo, bchi, domlo, domhi, qbmarr, qbparr, flx, qdir, qa, idir);
+    }
+  });
+}
+
 // Host function to call gpu hydro functions
 #if AMREX_SPACEDIM == 3
 void
@@ -988,9 +1050,10 @@ pc_umeth_eb_3D(
       amrex::Box bfbx = surroundingNodes(bx_to_fill, idir);
       bfbx.setBig(idir, domlo[idir]);
       if (bfbx.ok()) {
-        pc_low_order_boundary(
+        pc_low_order_boundary_eb(
           bfbx, bclo[idir], bchi[idir], domlo[idir], domhi[idir], plm_iorder,
-          use_flattening, idir, del[idir], dt, q, qaux, flx[idir], qec[idir]);
+          use_flattening, idir, del[idir], dt, q, qaux, flag_arr, ap[idir],
+          flx[idir], qec[idir]);
       }
     }
     if (
@@ -1000,9 +1063,10 @@ pc_umeth_eb_3D(
       amrex::Box bfbx = surroundingNodes(bx_to_fill, idir);
       bfbx.setSmall(idir, domhi[idir] + 1);
       if (bfbx.ok()) {
-        pc_low_order_boundary(
+        pc_low_order_boundary_eb(
           bfbx, bclo[idir], bchi[idir], domlo[idir], domhi[idir], plm_iorder,
-          use_flattening, idir, del[idir], dt, q, qaux, flx[idir], qec[idir]);
+          use_flattening, idir, del[idir], dt, q, qaux, flag_arr, ap[idir],
+          flx[idir], qec[idir]);
       }
     }
   }
@@ -1379,7 +1443,7 @@ pc_umeth_eb_2D(
   // This box must be grown by one in transverse direction so we can
   // do tangential interpolation when taking divergence later
   const amrex::Box& xfxbx =
-    surroundingNodes(grow(bx_to_fill, 1, 1 - cdir), cdir);
+    surroundingNodes(grow(bx_to_fill, 1 - cdir, 1), cdir);
 
   // Final Riemann problem X
   amrex::ParallelFor(xfxbx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
@@ -1407,7 +1471,7 @@ pc_umeth_eb_2D(
   // This box must be grown by one in transverse direction so we can
   // do tangential interpolation when taking divergence later
   const amrex::Box& yfxbx =
-    surroundingNodes(grow(bx_to_fill, 1, 1 - cdir), cdir);
+    surroundingNodes(grow(bx_to_fill, 1 - cdir, 1), cdir);
 
   // Final Riemann problem Y
   amrex::ParallelFor(yfxbx, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
@@ -1429,9 +1493,10 @@ pc_umeth_eb_2D(
       amrex::Box bfbx = surroundingNodes(bx_to_fill, idir);
       bfbx.setBig(idir, domlo[idir]);
       if (bfbx.ok()) {
-        pc_low_order_boundary(
+        pc_low_order_boundary_eb(
           bfbx, bclo[idir], bchi[idir], domlo[idir], domhi[idir], plm_iorder,
-          use_flattening, idir, del[idir], dt, q, qaux, flx[idir], qec[idir]);
+          use_flattening, idir, del[idir], dt, q, qaux, flag_arr, ap[idir],
+          flx[idir], qec[idir]);
       }
     }
     if (
@@ -1441,9 +1506,10 @@ pc_umeth_eb_2D(
       amrex::Box bfbx = surroundingNodes(bx_to_fill, idir);
       bfbx.setSmall(idir, domhi[idir] + 1);
       if (bfbx.ok()) {
-        pc_low_order_boundary(
+        pc_low_order_boundary_eb(
           bfbx, bclo[idir], bchi[idir], domlo[idir], domhi[idir], plm_iorder,
-          use_flattening, idir, del[idir], dt, q, qaux, flx[idir], qec[idir]);
+          use_flattening, idir, del[idir], dt, q, qaux, flag_arr, ap[idir],
+          flx[idir], qec[idir]);
       }
     }
   }

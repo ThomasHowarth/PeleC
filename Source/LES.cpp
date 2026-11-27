@@ -135,9 +135,7 @@ PeleC::getLESTerm(
     break;
   }
 
-  amrex::Print()
-    << "WARNING -- Need to implement LES extrap here, see diffusion"
-    << std::endl;
+  amrex::Print() << "WARNING -- Need to implement LES extrap here" << std::endl;
 
   // Filter the SGS source term
   if (use_explicit_filter) {

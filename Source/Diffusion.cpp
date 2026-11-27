@@ -634,30 +634,6 @@ PeleC::getMOLSrcTerm(
         amrex::Abort("multi-valued eb boundary fluxes to be implemented");
       }
 
-      // Extrapolate to GhostCells
-      if (MOLSrcTerm.nGrow() > 0) {
-        BL_PROFILE("PeleC::diffextrap()");
-        const int mg = MOLSrcTerm.nGrow();
-        const auto* low = vbox.loVect();
-        const auto* high = vbox.hiVect();
-        auto dlo = amrex::lbound(Dterm);
-        auto dhi = amrex::ubound(Dterm);
-        const int AMREX_D_DECL(lx = low[0], ly = low[1], lz = low[2]);
-        const int AMREX_D_DECL(hx = high[0], hy = high[1], hz = high[2]);
-        amrex::ParallelFor(
-          vbox, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
-            pc_diffextrap(
-              i, j, k, Dterm, mg, UMX, UMZ + 1, AMREX_D_DECL(lx, ly, lz),
-              AMREX_D_DECL(hx, hy, hz), dlo, dhi);
-            pc_diffextrap(
-              i, j, k, Dterm, mg, UFS, UFS + NUM_SPECIES,
-              AMREX_D_DECL(lx, ly, lz), AMREX_D_DECL(hx, hy, hz), dlo, dhi);
-            pc_diffextrap(
-              i, j, k, Dterm, mg, UEDEN, UEDEN + 1, AMREX_D_DECL(lx, ly, lz),
-              AMREX_D_DECL(hx, hy, hz), dlo, dhi);
-          });
-      }
-
       // EB redistribution
       amrex::FArrayBox dm_as_fine(
         amrex::Box::TheUnitBox(), MOLSrcTerm.nComp(), amrex::The_Async_Arena());
