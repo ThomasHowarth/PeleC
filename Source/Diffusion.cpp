@@ -455,7 +455,7 @@ PeleC::getMOLSrcTerm(
         { // Get face-centered hyperbolic fluxes
           BL_PROFILE("PeleC::pc_hyp_mol_flux()");
           pc_compute_hyp_mol_flux(
-            cbox, qar, qauxar, flx, area_arr, plm_iorder, use_laxf_flux,
+            cbox, qar, qauxar, flx, area_arr, mol_iorder, use_laxf_flux,
             flags.array(mfi), geom, axis_loc, omega, axis, using_rf);
         }
 

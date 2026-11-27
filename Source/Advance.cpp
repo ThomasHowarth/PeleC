@@ -68,9 +68,12 @@ PeleC::do_mol_advance(
 
   amrex::MultiFab molSrc(grids, dmap, NVAR, 0, amrex::MFInfo(), Factory());
 
+  // The extra MOL iterations only run with reactions
+  const int n_mol_iters = do_react ? mol_iters : 1;
+
   amrex::MultiFab molSrc_old;
   amrex::MultiFab molSrc_new;
-  if (mol_iters > 1) {
+  if (n_mol_iters > 1) {
     molSrc_old.define(grids, dmap, NVAR, 0, amrex::MFInfo(), Factory());
     molSrc_new.define(grids, dmap, NVAR, 0, amrex::MFInfo(), Factory());
   }
@@ -102,14 +105,15 @@ PeleC::do_mol_advance(
   // Build other (non-diffusion) sources at t_old
   for (int src : src_list) {
     if (src != diff_src) {
-      construct_old_source(src, time, dt, amr_iteration, amr_ncycle, 0, 0);
+      // The MOL advance does not subcycle: one sub-iteration of one
+      construct_old_source(src, time, dt, amr_iteration, amr_ncycle, 0, 1);
 
       // add sources to molsrc
       amrex::MultiFab::Saxpy(molSrc, 1.0, *old_sources[src], 0, 0, NVAR, 0);
     }
   }
 
-  if (mol_iters > 1) {
+  if (n_mol_iters > 1) {
     amrex::MultiFab::Copy(molSrc_old, molSrc, 0, 0, NVAR, 0);
   }
 
@@ -130,13 +134,14 @@ PeleC::do_mol_advance(
   }
 
   FillPatcherFill(Sborder, 0, NVAR, nGrow_FP_border, time + dt, State_Type, 0);
-  reflux_factor = mol_iters > 1 ? 0 : 0.5;
+  // With more MOL iterations the last one registers the t^{n+1} fluxes
+  reflux_factor = n_mol_iters > 1 ? 0 : 0.5;
   getMOLSrcTerm(Sborder, molSrc, time, dt, reflux_factor);
 
   // Build other (non-diffusion) sources at t_new
   for (int src : src_list) {
     if (src != diff_src) {
-      construct_new_source(src, time + dt, dt, amr_iteration, amr_ncycle, 0, 0);
+      construct_new_source(src, time + dt, dt, amr_iteration, amr_ncycle, 0, 1);
 
       // add sources to molsrc
       amrex::MultiFab::Saxpy(molSrc, 1.0, *new_sources[src], 0, 0, NVAR, 0);
@@ -168,16 +173,25 @@ PeleC::do_mol_advance(
   computeTemp(S_new, 0);
 
   if (do_react) {
-    for (int mol_iter = 2; mol_iter <= mol_iters; ++mol_iter) {
+    for (int mol_iter = 2; mol_iter <= n_mol_iters; ++mol_iter) {
       if (verbose != 0) {
         amrex::Print() << "... Re-computing MOL source term at t^{n+1} (iter = "
-                       << mol_iter << " of " << mol_iters << ")" << std::endl;
+                       << mol_iter << " of " << n_mol_iters << ")" << std::endl;
       }
 
       FillPatcherFill(
         Sborder, 0, NVAR, nGrow_FP_border, time + dt, State_Type, 0);
-      reflux_factor = mol_iter == mol_iters ? 0.5 : 0;
+      reflux_factor = mol_iter == n_mol_iters ? 0.5 : 0;
       getMOLSrcTerm(Sborder, molSrc_new, time, dt, reflux_factor);
+
+      // molSrc_old holds the other (non-diffusion) sources at t_old, so add
+      // the ones at t_new, as built above, to molSrc_new
+      for (int src : src_list) {
+        if (src != diff_src) {
+          amrex::MultiFab::Saxpy(
+            molSrc_new, 1.0, *new_sources[src], 0, 0, NVAR, 0);
+        }
+      }
 
       // F_{AD} = (1/2)(molSrc_old + molSrc_new)
       amrex::MultiFab::LinComb(
