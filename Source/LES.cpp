@@ -576,11 +576,12 @@ PeleC::getDynamicSmagorinskyLESTerm(
               l_transport_harmonic_mean);
             alpha_ec_arr[dir](i, j, k, 0) = ac[0];
 
-            amrex::Real tc[1] = {0.0};
+            // The face needs the temperature flux normal to it
+            amrex::Real tc[AMREX_SPACEDIM] = {0.0};
             pc_move_transcoefs_to_ec(
-              AMREX_D_DECL(i, j, k), 0, flux_T_ar, tc, dir,
+              AMREX_D_DECL(i, j, k), dir, flux_T_ar, tc, dir,
               l_transport_harmonic_mean);
-            flux_T_ec_arr[dir](i, j, k, 0) = tc[0];
+            flux_T_ec_arr[dir](i, j, k, 0) = tc[dir];
           });
       }
 

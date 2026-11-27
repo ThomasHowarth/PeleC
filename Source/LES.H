@@ -310,8 +310,11 @@ pc_dynamic_smagorinsky_coeffs(
   }
 
   // "resolved turbulent stresses" and others
+  // The modelled deviatoric stress is -Cs2 * alphaij at the grid filter and
+  // -Cs2 * betaij at the test filter (see pc_dynamic_smagorinsky_sfs_term),
+  // so the Germano identity is L = Cs2 * (filtered alphaij - betaij)
   for (int dir = 0; dir < AMREX_SPACEDIM * AMREX_SPACEDIM; dir++) {
-    M[dir] = betaij[dir] - alphaij(i, j, k, dir);
+    M[dir] = alphaij(i, j, k, dir) - betaij[dir];
   }
 
   L[i00] = Kij(i, j, k, 0) - q(i, j, k, QRHO) * q(i, j, k, QU) * q(i, j, k, QU);

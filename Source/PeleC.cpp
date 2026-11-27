@@ -2012,10 +2012,10 @@ PeleC::derive(const std::string& name, amrex::Real time, int ngrow)
       amrex::MultiFab::Copy(*derive_dat, LES_Coeffs, comp_CI, 0, 1, ngrow);
     } else if ((les_model != 1) && (name == "Pr_T")) {
       amrex::MultiFab::Copy(*derive_dat, LES_Coeffs, comp_PrT, 0, 1, ngrow);
-    } else { // Pr_T, les_model==1
-      amrex::MultiFab::Copy(
+    } else { // Pr_T = Cs2 / (Cs2 / Pr_T), les_model==1
+      amrex::MultiFab::Copy(*derive_dat, LES_Coeffs, comp_Cs2, 0, 1, ngrow);
+      amrex::MultiFab::Divide(
         *derive_dat, LES_Coeffs, comp_Cs2ovPrT, 0, 1, ngrow);
-      amrex::MultiFab::Divide(*derive_dat, LES_Coeffs, comp_Cs2, 0, 1, ngrow);
     }
     return derive_dat;
   }
@@ -2106,7 +2106,7 @@ PeleC::init_les()
   }
   LES_Coeffs.setVal(CI, comp_CI, 1, LES_Coeffs.nGrow());
   if (les_model == 1) {
-    LES_Coeffs.setVal(Cs * Cs * PrT, comp_Cs2ovPrT, 1, LES_Coeffs.nGrow());
+    LES_Coeffs.setVal(Cs * Cs / PrT, comp_Cs2ovPrT, 1, LES_Coeffs.nGrow());
   } else {
     LES_Coeffs.setVal(PrT, comp_PrT, 1, LES_Coeffs.nGrow());
   }
