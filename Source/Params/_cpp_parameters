@@ -131,7 +131,9 @@ forcing_u0                  Real           0.0
 forcing_v0                  Real           0.0
 forcing_w0                  Real           0.0
 
-# Forcing
+# Forcing coefficient per unit density, in cm^3 / (g s): the momentum
+# source is forcing_force * rho * (rho * u - rho * u0), so a linear forcing
+# rate A (1/s) at a reference density rho0 is forcing_force = A / rho0
 forcing_force               Real           0.0
 
 # reconstruction type:

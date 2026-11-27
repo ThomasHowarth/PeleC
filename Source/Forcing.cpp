@@ -67,12 +67,11 @@ PeleC::fill_forcing_source(
       if (!flagarrs[nbx](i, j, k).isCovered()) {
         const auto& sarr = sarrs[nbx];
         const auto& src = srcs[nbx];
-        src(i, j, k, UMX) =
-          force * sarr(i, j, k, URHO) * (sarr(i, j, k, UMX) - u0);
-        src(i, j, k, UMY) =
-          force * sarr(i, j, k, URHO) * (sarr(i, j, k, UMY) - v0);
-        src(i, j, k, UMZ) =
-          force * sarr(i, j, k, URHO) * (sarr(i, j, k, UMZ) - w0);
+        // force is per unit density (see forcing_force), u0 is a velocity
+        const amrex::Real rho = sarr(i, j, k, URHO);
+        src(i, j, k, UMX) = force * rho * (sarr(i, j, k, UMX) - rho * u0);
+        src(i, j, k, UMY) = force * rho * (sarr(i, j, k, UMY) - rho * v0);
+        src(i, j, k, UMZ) = force * rho * (sarr(i, j, k, UMZ) - rho * w0);
       }
     });
   amrex::Gpu::synchronize();
