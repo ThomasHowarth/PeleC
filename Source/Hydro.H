@@ -38,8 +38,9 @@ pc_srctoprim(
   srcq(i, j, k, QU) = (umx - vx * srcrho) * rhoinv;
   srcq(i, j, k, QV) = (umy - vy * srcrho) * rhoinv;
   srcq(i, j, k, QW) = (umz - vz * srcrho) * rhoinv;
+  // d(rho e) = d(rho E) - u . d(rho u) + 0.5 * |u|^2 * d(rho)
   srcq(i, j, k, QREINT) = src(i, j, k, UEDEN) - vx * umx - vy * umy - vz * umz +
-                          srcrho * (vx * vx + vy * vy + vz * vz);
+                          0.5 * srcrho * (vx * vx + vy * vy + vz * vz);
   srcq(i, j, k, QPRES) =
     qa(i, j, k, QDPDE) *
       (srcq(i, j, k, QREINT) - q(i, j, k, QREINT) * srcrho * rhoinv) * rhoinv +
