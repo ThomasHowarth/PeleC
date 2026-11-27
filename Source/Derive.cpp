@@ -159,8 +159,9 @@ PeleC::pc_dereint1(
       const amrex::Real uz = dat(i, j, k, UMZ) * rhoInv;
       e(i, j, k) =
         dat(i, j, k, UEDEN) * rhoInv - 0.5 * (ux * ux + uy * uy + uz * uz);
-      // see Blazek, Appendix A3, Navier-Stokes in rotating frame of reference
-      e(i, j, k) -= roteng;
+      // E = e + 0.5 * u^2 - 0.5 * omega^2 * r^2, see Blazek, Appendix A3,
+      // Navier-Stokes in rotating frame of reference
+      e(i, j, k) += roteng;
     });
 #else
     amrex::ignore_unused(geomdata);

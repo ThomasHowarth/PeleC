@@ -1600,8 +1600,8 @@ PeleC::enforce_consistent_e(amrex::MultiFab& S)
         amrex::IntVect iv(AMREX_D_DECL(i, j, k));
         amrex::Real rotenrg =
           get_rot_energy(iv, omega, axis, axis_loc, geomdata);
-        sarr(i, j, k, UEDEN) =
-          sarr(i, j, k, UEINT) - sarr(i, j, k, URHO) * rotenrg;
+        // UEDEN already holds the internal plus kinetic energy
+        sarr(i, j, k, UEDEN) -= sarr(i, j, k, URHO) * rotenrg;
       });
   }
 }
