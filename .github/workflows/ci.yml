@@ -42,7 +42,19 @@ env:
   COMPILER_CACHE_DIR: ~/.cache/ccache
 
 jobs:
+  Detect-Changes:
+    # A called workflow can only narrow the caller's token permissions, so
+    # grant here what its filter job needs.
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/detect-changes.yml
+
   Formatting:
+    needs: Detect-Changes
+    # The one docs-only gate: every build and lint job needs Formatting, so
+    # they are skipped with it.
+    if: needs['Detect-Changes'].outputs['has-source-changes'] == 'true'
     # Also on the scheduled runs (it takes seconds), so the build jobs that
     # need it run there to refresh their caches.
     runs-on: ubuntu-latest
@@ -812,8 +824,8 @@ jobs:
         with:
           sarif_file: sarif-results/cpp.sarif
   Lint-codespell:
-    needs: Formatting
-    # No cache to refresh: skipped on the scheduled runs.
+    # Not filtered: docs-only changes are what it checks. No cache to
+    # refresh, so skipped on the scheduled runs.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
@@ -828,3 +840,24 @@ jobs:
           pip install codespell
       - name: Run codespell
         run: codespell
+
+  # The one check for branch protection to require in PeleC-CI. A job skipped
+  # by its own `if:` (docs-only changes, scheduled runs) does not expand its
+  # matrix, so its per-entry checks never report and a PR requiring them
+  # waits forever; skipped jobs pass here. It also fails when Detect-Changes
+  # fails, which would otherwise skip every build.
+  CI-Status:
+    needs: [Detect-Changes, Formatting, CPU-GNUmake, CPU-CMake, CPU-CMake-SINGLE,
+            GPU-Nvidia, GPU-AMD, GPU-Intel, Lint-clang-tidy, Lint-codeql,
+            Lint-codespell]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "${RESULTS}"
+          for r in ${RESULTS}; do
+            [ "$r" = success ] || [ "$r" = skipped ] || exit 1
+          done
