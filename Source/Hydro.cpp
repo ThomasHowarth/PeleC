@@ -89,7 +89,17 @@ PeleC::construct_hydro_source(
         }
 
         auto const& sarr = S.array(mfi);
-        auto const& hyd_src = hydro_source.array(mfi);
+        // The filter needs the hydro update on the grown box fbx. The update
+        // is accumulated, so it cannot go straight into hydro_source: the
+        // grown boxes of neighbouring tiles overlap. Use a tile-local fab and
+        // copy the filtered result of this tile into hydro_source.
+        amrex::FArrayBox hyd_src_tile;
+        if (use_explicit_filter) {
+          hyd_src_tile.resize(fbx, NVAR, amrex::The_Async_Arena());
+          hyd_src_tile.setVal<amrex::RunOn::Device>(0.0);
+        }
+        auto const& hyd_src =
+          use_explicit_filter ? hyd_src_tile.array() : hydro_source.array(mfi);
 
         // Temporary Fabs
         amrex::FArrayBox q(qbx, QVAR, amrex::The_Async_Arena());
@@ -238,14 +248,8 @@ PeleC::construct_hydro_source(
               bxtmp, flux[dir].nComp(), filtered_flux.array(), flx_arr[dir]);
           }
 
-          amrex::FArrayBox filtered_source_out(
-            bx, NVAR, amrex::The_Async_Arena());
           les_filter.apply_filter(
-            bx, hydro_source[mfi], filtered_source_out, Density, NVAR);
-
-          setV(bx, hyd_src.nComp(), hyd_src, 0.0);
-          copy_array4(
-            bx, hyd_src.nComp(), filtered_source_out.array(), hyd_src);
+            bx, hyd_src_tile, hydro_source[mfi], Density, NVAR);
         }
 
         // Refluxing

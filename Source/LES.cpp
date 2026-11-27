@@ -521,8 +521,16 @@ PeleC::getDynamicSmagorinskyLESTerm(
 
       // 5. Filter to smooth the dynamic coefficients - still at cell
       // centers
-      auto const& LES_Coeffs_ar = LES_Coeffs[mfi].array();
-      coeff_filter.apply_filter(g4box, coeff_cc, LES_Coeffs[mfi]);
+      // g4box overlaps the neighbouring tiles of the same fab, so filter
+      // into a tile-local fab and store it over the grown tile box, which
+      // does not overlap them
+      amrex::FArrayBox filtered_coeff_cc(
+        g4box, nCompC, amrex::The_Async_Arena());
+      coeff_filter.apply_filter(g4box, coeff_cc, filtered_coeff_cc);
+      auto const& filtered_coeff_ar = filtered_coeff_cc.const_array();
+      copy_array4(
+        mfi.growntilebox(LES_Coeffs.nGrow()), nCompC, filtered_coeff_ar,
+        LES_Coeffs.array(mfi));
 
       // 6. Get the SFS term
 
@@ -557,7 +565,7 @@ PeleC::getDynamicSmagorinskyLESTerm(
             amrex::Real c[nCompC] = {0.0};
             for (int n = 0; n < nCompC; n++) {
               pc_move_transcoefs_to_ec(
-                AMREX_D_DECL(i, j, k), n, LES_Coeffs_ar, c, dir,
+                AMREX_D_DECL(i, j, k), n, filtered_coeff_ar, c, dir,
                 l_transport_harmonic_mean);
               coeff_ec_arr[dir](i, j, k, n) = c[n];
             }
