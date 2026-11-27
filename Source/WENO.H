@@ -270,8 +270,9 @@ weno_reconstruct_3z(const amrex::Real* s, amrex::Real& sm, amrex::Real& sp)
   beta[1] = 1.0 + (tau / (eps + beta[1])) * (tau / (eps + beta[1]));
   beta[0] = 1.0 + (tau / (eps + beta[0])) * (tau / (eps + beta[0]));
 
-  alpha[1] = 2.0 * beta[1];
-  alpha[0] = 1.0 * beta[0];
+  // Linear weights: 1/3 on the extrapolating stencil, 2/3 on the centred one
+  alpha[1] = 1.0 * beta[1];
+  alpha[0] = 2.0 * beta[0];
   amrex::Real alpha1 = 1.0 / (alpha[1] + alpha[0]);
 
   vl[1] = -s[0] + 3.0 * s[1];
@@ -287,8 +288,8 @@ weno_reconstruct_3z(const amrex::Real* s, amrex::Real& sm, amrex::Real& sp)
   beta[1] = 1.0 + (tau / (eps + beta[1])) * (tau / (eps + beta[1]));
   beta[0] = 1.0 + (tau / (eps + beta[0])) * (tau / (eps + beta[0]));
 
-  alpha[1] = 2.0 * beta[1];
-  alpha[0] = 1.0 * beta[0];
+  alpha[1] = 1.0 * beta[1];
+  alpha[0] = 2.0 * beta[0];
   alpha1 = 1.0 / (alpha[1] + alpha[0]);
 
   vr[1] = 3.0 * s[1] - s[2];

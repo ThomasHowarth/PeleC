@@ -913,6 +913,10 @@ int
 PeleC::numGrow()
 {
   int ng = 4;
+  if ((!do_mol) && (ppm_type == 1) && use_hybrid_weno && (weno_scheme == 2)) {
+    // The 7 point WENO stencil reaches one cell further than the others
+    ng += 1;
+  }
   if (eb_in_domain) {
     // IF MOL     + FRD then 5
     // IF Godunov + FRD then 6
